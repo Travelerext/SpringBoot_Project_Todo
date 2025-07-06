@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/todo?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+    username: root
+    password: ${DATABASE_PASSWORD}
+  sql:
+    init:
+      schema-locations: classpath:db/schema.sql
+  data:
+    redis:
+      timeout: 3000
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+jwt:
+  secret: ${JWT_SECRET_BASE64}

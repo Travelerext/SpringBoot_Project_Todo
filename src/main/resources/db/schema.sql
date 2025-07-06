@@ -1,0 +1,30 @@
+-- User table
+CREATE TABLE IF NOT EXISTS `user` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `user_name` VARCHAR(255) NOT NULL,
+  `email` VARCHAR(255) NOT NULL,
+  `password` VARCHAR(255) NOT NULL,
+  `avatar_id` BIGINT,
+  `create_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_email` (`email`)
+);
+
+-- Avatar table
+CREATE TABLE IF NOT EXISTS `avatar` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `origin_name` VARCHAR(255) NOT NULL,
+  `storage_name` VARCHAR(255) NOT NULL,
+  `mime_type` VARCHAR(255) NOT NULL,
+  `size` BIGINT NOT NULL,
+  `create_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Refresh token table
+CREATE TABLE IF NOT EXISTS `refresh_token` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `hashed_token` VARCHAR(255) NOT NULL,
+  `user_id` BIGINT NOT NULL,
+  `expire_at` TIMESTAMP NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+);

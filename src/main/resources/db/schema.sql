@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS `user` (
   `email` VARCHAR(255) NOT NULL,
   `password` VARCHAR(255) NOT NULL,
   `avatar_id` BIGINT,
-  `create_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_email` (`email`)
 );
 
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS `avatar` (
   `storage_name` VARCHAR(255) NOT NULL,
   `mime_type` VARCHAR(255) NOT NULL,
   `size` BIGINT NOT NULL,
-  `create_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Refresh token table
@@ -27,4 +27,37 @@ CREATE TABLE IF NOT EXISTS `refresh_token` (
   `expire_at` TIMESTAMP NOT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+);
+
+-- Todo table
+CREATE TABLE IF NOT EXISTS `todo` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `content` VARCHAR(1000) NOT NULL,
+  `done` BOOLEAN NOT NULL DEFAULT FALSE,
+  `user_id` BIGINT NOT NULL,
+  `group_id` BIGINT,
+  `schedule_id` BIGINT,
+  `deadline` TIMESTAMP NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`group_id`) REFERENCES `group` (`id`) ON DELETE SET NULL,
+  FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`id`) ON DELETE SET NULL
+);
+
+-- Group table
+CREATE TABLE IF NOT EXISTS `group` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `group_name` VARCHAR(255) NOT NULL,
+  `user_id` BIGINT NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+);
+
+-- Schedule table
+CREATE TABLE IF NOT EXISTS `schedule` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `active` BOOLEAN NOT NULL DEFAULT TRUE,
+  `frequency` ENUM('MONTHLY', 'WEEKLY', 'DAILY', 'CUSTOM') NOT NULL,
+  `custom_day_of_week` JSON NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

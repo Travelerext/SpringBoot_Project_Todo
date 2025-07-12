@@ -68,7 +68,7 @@ public class AuthService {
         user.setUserName(trimmedUsername);
         user.setEmail(trimmedEmail);
         user.setPassword(hashEncoder.encode(password));
-        user.setCreateAt(Instant.now());
+        user.setCreatedAt(Instant.now());
         userMapper.insert(user);
         return user;
     }
@@ -106,8 +106,8 @@ public class AuthService {
         return new TokenPair(newAccessToken, newRefreshToken);
     }
 
-    @Scheduled(fixedRate = 1000 * 60 * 60 * 24)
-    public void deleteExpiredRefreshTokens() {
+    @Scheduled(fixedRate = 1000 * 60 * 60)
+    private void deleteExpiredRefreshTokens() {
         Instant now = Instant.now();
         refreshTokenMapper.delete(
                 (new QueryWrapper<RefreshToken>()).lt("expire_at", now)

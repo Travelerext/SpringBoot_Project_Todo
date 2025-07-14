@@ -29,6 +29,24 @@ CREATE TABLE IF NOT EXISTS `refresh_token` (
   FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
 );
 
+-- Group table
+CREATE TABLE IF NOT EXISTS `group` (
+    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+    `group_name` VARCHAR(255) NOT NULL,
+    `user_id` BIGINT NOT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+);
+
+-- Schedule table
+CREATE TABLE IF NOT EXISTS `schedule` (
+  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+   `active` BOOLEAN NOT NULL DEFAULT TRUE,
+   `frequency` ENUM('MONTHLY', 'WEEKLY', 'DAILY', 'CUSTOM') NOT NULL,
+   `custom_day_of_week` JSON NULL,
+   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Todo table
 CREATE TABLE IF NOT EXISTS `todo` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -42,22 +60,4 @@ CREATE TABLE IF NOT EXISTS `todo` (
   FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
   FOREIGN KEY (`group_id`) REFERENCES `group` (`id`) ON DELETE SET NULL,
   FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`id`) ON DELETE SET NULL
-);
-
--- Group table
-CREATE TABLE IF NOT EXISTS `group` (
-  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-  `group_name` VARCHAR(255) NOT NULL,
-  `user_id` BIGINT NOT NULL,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
-);
-
--- Schedule table
-CREATE TABLE IF NOT EXISTS `schedule` (
-  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-  `active` BOOLEAN NOT NULL DEFAULT TRUE,
-  `frequency` ENUM('MONTHLY', 'WEEKLY', 'DAILY', 'CUSTOM') NOT NULL,
-  `custom_day_of_week` JSON NULL,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

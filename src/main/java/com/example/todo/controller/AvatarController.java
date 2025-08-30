@@ -59,6 +59,7 @@ public class AvatarController {
         try {
             User user = userMapper.selectById(userId);
             if (user == null) { throw new IllegalArgumentException("User not found"); }
+            if (user.getAvatarId() == null) { throw new IllegalArgumentException("Avatar hasn't been set"); }
 
             Avatar avatar = avatarService.getAvatar(user.getAvatarId());
             Resource resource = avatarService.getAvatarResource(user.getAvatarId());

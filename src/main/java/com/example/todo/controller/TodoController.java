@@ -1,6 +1,8 @@
 package com.example.todo.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.example.todo.dto.TodoResponse;
+import com.example.todo.dto.TodoResponseMapper;
 import com.example.todo.model.Schedule;
 import com.example.todo.model.Todo;
 import com.example.todo.model.Frequency;
@@ -11,6 +13,7 @@ import com.example.todo.service.TodoService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -21,25 +24,13 @@ import java.util.stream.Collectors;
 public class TodoController {
 
     private final TodoService todoService;
-    private final GroupService groupService;
-    private final ScheduleService scheduleService;
-
-    public TodoController(TodoService todoService, GroupService groupService, ScheduleService scheduleService) {
+    private final TodoResponseMapper toTodoResponseMapper;
+    public TodoController(TodoService todoService, TodoResponseMapper toTodoResponseMapper) {
         this.todoService = todoService;
-        this.groupService = groupService;
-        this.scheduleService = scheduleService;
+        this.toTodoResponseMapper = toTodoResponseMapper;
     }
 
     public record TodoRequest(String content, Instant deadline, Frequency frequency, List<Short> customDayOfWeek) {}
-
-    public record TodoResponse(
-            Long id, 
-            String content, 
-            Instant deadline, 
-            Frequency frequency, 
-            List<Short> customDayOfWeek,
-            String groupName
-    ) {}
 
     @GetMapping("/today")
     public ResponseEntity<Page<TodoResponse>> getTodayTodos(
@@ -48,7 +39,7 @@ public class TodoController {
         Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         Page<Todo> todoPage = todoService.getTodayTodos(current, size, userId);
         Page<TodoResponse> responsePage = new Page<>(todoPage.getCurrent(), todoPage.getSize(), todoPage.getTotal());
-        responsePage.setRecords(todoPage.getRecords().stream().map(this::toResponse).collect(Collectors.toList()));
+        responsePage.setRecords(todoPage.getRecords().stream().map(toTodoResponseMapper::toTodoResponse).toList());
         return ResponseEntity.ok(responsePage);
     }
 
@@ -59,7 +50,7 @@ public class TodoController {
         Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         Page<Todo> todoPage = todoService.getAllUndoneTodos(current, size, userId);
         Page<TodoResponse> responsePage = new Page<>(todoPage.getCurrent(), todoPage.getSize(), todoPage.getTotal());
-        responsePage.setRecords(todoPage.getRecords().stream().map(this::toResponse).collect(Collectors.toList()));
+        responsePage.setRecords(todoPage.getRecords().stream().map(toTodoResponseMapper::toTodoResponse).toList());
         return ResponseEntity.ok(responsePage);
     }
 
@@ -70,7 +61,7 @@ public class TodoController {
         Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         Page<Todo> todoPage = todoService.getOverdueTodos(current, size, userId);
         Page<TodoResponse> responsePage = new Page<>(todoPage.getCurrent(), todoPage.getSize(), todoPage.getTotal());
-        responsePage.setRecords(todoPage.getRecords().stream().map(this::toResponse).collect(Collectors.toList()));
+        responsePage.setRecords(todoPage.getRecords().stream().map(toTodoResponseMapper::toTodoResponse).toList());
         return ResponseEntity.ok(responsePage);
     }
 
@@ -81,7 +72,7 @@ public class TodoController {
         Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         Page<Todo> todoPage = todoService.getAllDoneTodos(current, size, userId);
         Page<TodoResponse> responsePage = new Page<>(todoPage.getCurrent(), todoPage.getSize(), todoPage.getTotal());
-        responsePage.setRecords(todoPage.getRecords().stream().map(this::toResponse).collect(Collectors.toList()));
+        responsePage.setRecords(todoPage.getRecords().stream().map(toTodoResponseMapper::toTodoResponse).toList());
         return ResponseEntity.ok(responsePage);
     }
 
@@ -93,55 +84,70 @@ public class TodoController {
     }
 
     @PostMapping("/create")
-    public ResponseEntity<Boolean> createTodo(@RequestBody TodoRequest requestBody) {
+    public ResponseEntity<?> createTodo(@RequestBody TodoRequest requestBody) {
         Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return ResponseEntity.ok(todoService.createTodo(
-                requestBody.content,
-                userId,
-                requestBody.deadline,
-                requestBody.frequency,
-                requestBody.customDayOfWeek
-        ));
+        try {
+            System.out.println(requestBody.deadline);
+            return ResponseEntity.ok(
+                    toTodoResponseMapper.toTodoResponse(todoService.createTodo(
+                            requestBody.content,
+                            userId,
+                            requestBody.deadline,
+                            requestBody.frequency,
+                            requestBody.customDayOfWeek)
+                    ));
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        }
     }
 
     @PutMapping("/edit")
-    public ResponseEntity<Boolean> editTodo(@RequestParam Long todoId, @RequestBody TodoRequest requestBody) {
+    public ResponseEntity<?> editTodo(@RequestParam String todoId, @RequestBody TodoRequest requestBody) {
         Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return ResponseEntity.ok(todoService.editTodo(
-                todoId,
-                requestBody.content,
-                userId,
-                requestBody.deadline,
-                requestBody.frequency,
-                requestBody.customDayOfWeek
-        ));
+        try {
+            return ResponseEntity.ok(
+                    toTodoResponseMapper.toTodoResponse(todoService.editTodo(
+                        Long.parseLong(todoId),
+                        requestBody.content,
+                        userId,
+                        requestBody.deadline,
+                        requestBody.frequency,
+                        requestBody.customDayOfWeek)
+                    ));
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        }
     }
 
     @PutMapping("/mark_done")
-    public ResponseEntity<Boolean> markDoneTodo(@RequestParam Long todoId) {
-        return ResponseEntity.ok(todoService.markDoneTodo(todoId));
+    public ResponseEntity<?> markDoneTodo(@RequestParam Long todoId) {
+        Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        try {
+            return ResponseEntity.ok(toTodoResponseMapper.toTodoResponse(todoService.markDoneTodo(todoId, userId)));
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        }
     }
 
     @DeleteMapping("/{todoId}")
-    public ResponseEntity<Boolean> deleteTodo(@PathVariable Long todoId) {
-        return ResponseEntity.ok(todoService.deleteTodo(todoId));
+    public ResponseEntity<?> deleteTodo(@PathVariable Long todoId) {
+        Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        try {
+            todoService.deleteTodo(todoId, userId);
+            return ResponseEntity.ok(null);
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        }
     }
 
     @PutMapping("/cancel_schedule")
-    public ResponseEntity<Boolean> cancelSchedule(@RequestParam Long scheduleId) {
-        return ResponseEntity.ok(todoService.cancelSchedule(scheduleId));
-    }
-
-    private TodoController.TodoResponse toResponse(Todo todo) {
-        Group group = todo.getGroupId() != null ? groupService.getById(todo.getGroupId()) : null;
-        Schedule schedule = todo.getScheduleId() != null ? scheduleService.getById(todo.getScheduleId()) : null;
-        return new TodoController.TodoResponse(
-                todo.getId(),
-                todo.getContent(),
-                todo.getDeadline(),
-                schedule != null ? schedule.getFrequency() : null,
-                schedule != null ? schedule.getCustomDayOfWeek() : null,
-                group != null ? group.getGroupName() : null
-        );
+    public ResponseEntity<?> cancelSchedule(@RequestParam Long scheduleId) {
+        Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        try {
+            todoService.cancelSchedule(scheduleId, userId);
+            return ResponseEntity.ok(null);
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        }
     }
 }

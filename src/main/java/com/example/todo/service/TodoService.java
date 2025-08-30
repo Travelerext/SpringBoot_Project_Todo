@@ -7,10 +7,13 @@ import com.example.todo.mapper.TodoMapper;
 import com.example.todo.model.Frequency;
 import com.example.todo.model.Schedule;
 import com.example.todo.model.Todo;
+import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.lang.module.ResolutionException;
 import java.time.*;
 import java.util.List;
 import java.util.Objects;
@@ -35,13 +38,12 @@ public class TodoService {
                 page,
                 new LambdaQueryWrapper<Todo>()
                         .eq(Todo::getUserId, userId)
-                        .or(wrapper -> wrapper
-                                .and(o -> o
-                                        .ge(Todo::getDeadline, startOfDay.atZone(ZoneId.systemDefault()).toInstant())
-                                        .le(Todo::getDeadline, endOfDay.atZone(ZoneId.systemDefault()).toInstant()))
-                                .and(o -> o
-                                        .ge(Todo::getCreatedAt, startOfDay.atZone(ZoneId.systemDefault()).toInstant())
-                                        .le(Todo::getCreatedAt, endOfDay.atZone(ZoneId.systemDefault()).toInstant()))
+                        .eq(Todo::getUserId, userId)
+                        .and(wrapper -> wrapper
+                                .or(o -> o
+                                        .between(Todo::getDeadline, startOfDay.atZone(ZoneId.systemDefault()).toInstant(), endOfDay.atZone(ZoneId.systemDefault()).toInstant())
+                                        .between(Todo::getCreatedAt, startOfDay.atZone(ZoneId.systemDefault()).toInstant(), endOfDay.atZone(ZoneId.systemDefault()).toInstant())
+                                )
                         )
                         .orderByAsc(Todo::getDeadline)
         );
@@ -90,49 +92,14 @@ public class TodoService {
     }
 
     @Transactional
-    public Boolean createTodo(String content, Long userId, Instant deadline, Frequency frequency, List<Short> customDayOfWeek) {
+    public Todo createTodo(String content, Long userId, Instant deadline, Frequency frequency, List<Short> customDayOfWeek) throws ResponseStatusException {
         Todo todo = new Todo();
         todo.setContent(content);
         todo.setUserId(userId);
+        System.out.println(deadline);
+        DeadlineCaltor(deadline, frequency, customDayOfWeek, todo);
 
-        if (deadline == null && frequency != null) {
-            LocalDateTime now = LocalDateTime.now();
-            LocalDateTime deadlineDateTime = null;
-
-            switch (frequency) {
-                case DAILY: {
-                    deadlineDateTime = now.withHour(23).withMinute(59).withSecond(59);
-                    break;
-                }
-                case WEEKLY: {
-                    int daysUntilSunday = 7 - now.getDayOfWeek().getValue();
-                    deadlineDateTime = now.plusDays(daysUntilSunday).withHour(23).withMinute(59).withSecond(59);
-                    break;
-                }
-                case MONTHLY: {
-                    deadlineDateTime = now.withDayOfMonth(
-                                    now.getMonth().length(now.toLocalDate().isLeapYear()))
-                            .withHour(23).withMinute(59).withSecond(59);
-                    break;
-                }
-                case CUSTOM: {
-                    if (customDayOfWeek != null && !customDayOfWeek.isEmpty()) {
-                        int daysUntilSunday = 7 - customDayOfWeek.getFirst();
-                        deadlineDateTime = now.plusDays(daysUntilSunday);
-                    }
-                }
-            }
-
-            if (deadlineDateTime != null) {
-                deadline = deadlineDateTime.atZone(ZoneId.systemDefault()).toInstant();
-            }
-        }
-
-        todo.setDeadline(deadline);
-
-        if (frequency == null) {
-            return todoMapper.insert(todo) == 1;
-        } else {
+        if (frequency != null) {
             Schedule schedule = new Schedule();
             schedule.setFrequency(frequency);
             schedule.setActive(true);
@@ -141,25 +108,65 @@ public class TodoService {
                 schedule.setCustomDayOfWeek(customDayOfWeek);
             }
 
-            boolean scheduleInsert = scheduleMapper.insert(schedule) == 1;
-
-            if (scheduleInsert) {
-                todo.setScheduleId(schedule.getId());
-                return todoMapper.insert(todo) == 1;
-            }
-
-            return false;
+            if (scheduleMapper.insert(schedule) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save schedule");
+            todo.setScheduleId(schedule.getId());
         }
+
+        if (todoMapper.insert(todo) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save todo");
+        return todo;
     }
 
     @Transactional
-    public Boolean editTodo(Long todoId, String content, Long userId, Instant deadline, Frequency frequency, List<Short> customDayOfWeek) {
+    public Todo editTodo(Long todoId, String content, Long userId, Instant deadline, Frequency frequency, List<Short> customDayOfWeek) throws ResponseStatusException {
         Todo todo = todoMapper.selectById(todoId);
-
-        if (todo == null || !Objects.equals(todo.getUserId(), userId)) return false;
+        if (todo == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid todo id");
+        if (!Objects.equals(todo.getUserId(), userId)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid user id");
 
         todo.setContent(content);
 
+        DeadlineCaltor(deadline, frequency, customDayOfWeek, todo);
+
+        if (frequency == null) {
+            if (todo.getScheduleId() != null) {
+                Schedule schedule = scheduleMapper.selectById(todo.getScheduleId());
+                if (schedule == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid schedule id");
+                scheduleMapper.deleteById(schedule);
+                todo.setScheduleId(null);
+            }
+            if (todoMapper.updateById(todo) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update todo");
+            System.out.println("test");
+            return todo;
+        }
+
+        Schedule schedule;
+        if (todo.getScheduleId() != null) {
+            schedule = scheduleMapper.selectById(todo.getScheduleId());
+            if (schedule == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid schedule id");
+        } else schedule = new Schedule();
+
+        schedule.setFrequency(frequency);
+        schedule.setActive(true);
+
+        if (frequency == Frequency.CUSTOM && customDayOfWeek != null) {
+            schedule.setCustomDayOfWeek(customDayOfWeek);
+        }
+
+        if (!scheduleMapper.insertOrUpdate(schedule)) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save schedule");
+
+        todo.setScheduleId(schedule.getId());
+        if (todoMapper.updateById(todo) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update todo");
+
+        return todo;
+    }
+
+    public List<Todo> findTodosByGroup(Long groupId) {
+        return todoMapper.selectList(
+                new LambdaQueryWrapper<Todo>()
+                        .eq(Todo::getGroupId, groupId)
+        );
+    }
+
+    private void DeadlineCaltor(Instant deadline, Frequency frequency, List<Short> customDayOfWeek, Todo todo) {
         if (deadline == null && frequency != null) {
             LocalDateTime now = LocalDateTime.now();
             LocalDateTime deadlineDateTime = null;
@@ -193,52 +200,35 @@ public class TodoService {
         }
 
         todo.setDeadline(deadline);
-
-        if (frequency == null) {
-            return todoMapper.updateById(todo) == 1;
-        }
-
-        Schedule schedule;
-        if (todo.getScheduleId() != null) {
-            schedule = scheduleMapper.selectById(todo.getScheduleId());
-            if (schedule == null) return false;
-        } else schedule = new Schedule();
-
-        schedule.setFrequency(frequency);
-        schedule.setActive(true);
-
-        if (frequency == Frequency.CUSTOM && customDayOfWeek != null) {
-            schedule.setCustomDayOfWeek(customDayOfWeek);
-        }
-
-        boolean scheduleInsert = scheduleMapper.insertOrUpdate(schedule);
-
-        if (scheduleInsert) {
-            todo.setScheduleId(schedule.getId());
-            return todoMapper.updateById(todo) == 1;
-        }
-        return false;
     }
 
-    public Boolean markDoneTodo(Long todoId) {
+    public Todo markDoneTodo(Long todoId, Long userId) throws ResponseStatusException {
         Todo todo = todoMapper.selectById(todoId);
-        if (todo == null) {
-            return false;
-        }
+        if (todo == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid todo id");
+        if (!Objects.equals(todo.getUserId(), userId)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid user id");
         todo.setDone(true);
-        return todoMapper.updateById(todo) == 1;
+        if (todoMapper.updateById(todo) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update todo");
+        return todo;
     }
 
-    public Boolean deleteTodo(Long todoId) {
-        return todoMapper.deleteById(todoId) == 1;
+    public void deleteTodo(Long todoId, Long userId) throws ResponseStatusException {
+        Todo todo = todoMapper.selectById(todoId);
+        if (todo == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid todo id");
+        if (!Objects.equals(todo.getUserId(), userId)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid user id");
+        if (todoMapper.deleteById(todo) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete todo");
     }
 
-    public Boolean cancelSchedule(Long scheduleId) {
+    public void cancelSchedule(Long scheduleId, Long userId) throws ResponseStatusException {
         Schedule schedule = scheduleMapper.selectById(scheduleId);
-        if (schedule == null) {
-            return false;
-        }
-        return scheduleMapper.updateById(schedule) == 1;
+        if (schedule == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid schedule id");
+        Todo todo = todoMapper.selectOne(
+                new LambdaQueryWrapper<Todo>()
+                        .eq(Todo::getScheduleId, schedule.getId())
+                        .last("LIMIT 1")
+        );
+        if (todo == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid schedule id");
+        if (!Objects.equals(todo.getUserId(), userId)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid user id");
+        if (scheduleMapper.updateById(schedule) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update schedule");
     }
 
     @Scheduled(cron = "0 0 0 * * ?")

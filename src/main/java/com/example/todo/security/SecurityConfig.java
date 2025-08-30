@@ -30,6 +30,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/auth/**")
                         .permitAll()
+                        .requestMatchers("/ws/**")
+                        .permitAll()
                         .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.FORWARD)
                         .permitAll()
                         .anyRequest()

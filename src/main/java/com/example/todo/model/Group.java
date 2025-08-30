@@ -7,10 +7,10 @@ import java.time.Instant;
 import java.util.List;
 
 @Data
-@TableName("group")
+@TableName("`group`")
 public class Group {
     private Long id;
     private String groupName;
     private Long userId;
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 }

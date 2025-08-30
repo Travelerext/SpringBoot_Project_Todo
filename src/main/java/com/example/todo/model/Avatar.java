@@ -13,5 +13,5 @@ public class Avatar {
     private String storageName;
     private String mimeType;
     private Long size;
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 }

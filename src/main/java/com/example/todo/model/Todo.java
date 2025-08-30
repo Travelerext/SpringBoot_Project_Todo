@@ -15,5 +15,5 @@ public class Todo {
     private Long groupId;
     private Long scheduleId;
     private Instant deadline;
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 }

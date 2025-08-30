@@ -44,13 +44,43 @@ public class AuthService {
                 (new LambdaQueryWrapper<User>()).eq(User::getEmail, trimmedEmail)
         );
         if (existingEmailUser != null) throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already taken");
+        verifyCodeService.deleteExitedCode(trimmedEmail);
         String code = verifyCodeService.generateCode();
         verifyCodeService.saveCode(trimmedEmail, code);
         String content = String.format("Your verification code is %s", code);
         emailService.sendEmail(trimmedEmail, "Verify your email", content);
     }
 
-    public User register(String username, String email, String password, String inputCode) throws ResponseStatusException {
+    public void sendResetPwdVerifyCode(String email) throws ResponseStatusException, MailException {
+        String trimmedEmail = email.trim();
+        User user = userMapper.selectOne(
+                (new LambdaQueryWrapper<User>()).eq(User::getEmail, trimmedEmail)
+        );
+        if (user == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        verifyCodeService.deleteExitedCode(trimmedEmail);
+        String code = verifyCodeService.generateCode();
+        verifyCodeService.saveResetPwdCode(trimmedEmail, code);
+        String content = String.format("Your verification code is %s", code);
+        emailService.sendEmail(user.getEmail(), "Reset your password", content);
+    }
+
+    public void resetPwd(String inputCode, String password, String email) throws ResponseStatusException {
+        String trimmedEmail = email.trim();
+        User user = userMapper.selectOne(
+                (new LambdaQueryWrapper<User>()).eq(User::getEmail, trimmedEmail)
+        );
+        if (user == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        if (!verifyCodeService.verifyResetPwdCode(trimmedEmail, inputCode)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid verification code");
+
+        user.setPassword(hashEncoder.encode(password));
+        if (userMapper.updateById(user) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to reset password");
+
+        refreshTokenMapper.delete(
+                (new QueryWrapper<RefreshToken>()).eq("user_id", user.getId())
+        );
+    }
+
+    public TokenPair register(String username, String email, String password, String inputCode) throws ResponseStatusException {
         String trimmedUsername = username.trim();
         User existingUser = userMapper.selectOne(
                 (new LambdaQueryWrapper<User>()).eq(User::getUserName, trimmedUsername)
@@ -69,8 +99,12 @@ public class AuthService {
         user.setEmail(trimmedEmail);
         user.setPassword(hashEncoder.encode(password));
         user.setCreatedAt(Instant.now());
-        userMapper.insert(user);
-        return user;
+        if (userMapper.insert(user) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create user");
+        String accessToken = jwtService.generateAccessToken(user.getId());
+        String refreshToken = jwtService.generateRefreshToken(user.getId());
+
+        storeRefreshToken(user.getId(), refreshToken);
+        return new TokenPair(accessToken, refreshToken);
     }
 
     public TokenPair login(String email, String password) throws ResponseStatusException {
@@ -106,6 +140,25 @@ public class AuthService {
         return new TokenPair(newAccessToken, newRefreshToken);
     }
 
+    @Transactional
+    public TokenPair editPassword(String oldPassword, String newPassword, Long userId) throws ResponseStatusException {
+        User user = userMapper.selectOne(
+                (new LambdaQueryWrapper<User>()).eq(User::getId, userId)
+        );
+        if (user == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found");
+        if (!hashEncoder.matches(oldPassword, user.getPassword())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid old password");
+        user.setPassword(hashEncoder.encode(newPassword));
+        if (userMapper.updateById(user) != 1) throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update user");
+        refreshTokenMapper.delete(
+                (new QueryWrapper<RefreshToken>()).eq("user_id", userId)
+        );
+        String newAccessToken = jwtService.generateAccessToken(user.getId());
+        String newRefreshToken = jwtService.generateRefreshToken(user.getId());
+        storeRefreshToken(user.getId(), newRefreshToken);
+        return new TokenPair(newAccessToken, newRefreshToken);
+
+    }
+
     @Scheduled(fixedRate = 1000 * 60 * 60)
     private void deleteExpiredRefreshTokens() {
         Instant now = Instant.now();
@@ -136,6 +189,4 @@ public class AuthService {
             throw new RuntimeException(e);
         }
     }
-
-
 }

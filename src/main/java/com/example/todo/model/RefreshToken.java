@@ -12,5 +12,5 @@ public class RefreshToken {
     private String hashedToken;
     private Long userId;
     private Instant expireAt;
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 }

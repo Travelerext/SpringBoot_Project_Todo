@@ -13,5 +13,5 @@ public class User {
     private String email;
     private String password;
     private Long avatarId;
-    private Instant createdAt;
+    private Instant createdAt = Instant.now();
 }
